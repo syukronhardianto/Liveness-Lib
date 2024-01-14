@@ -1,0 +1,4 @@
+doll
+glasses
+mask
+plain

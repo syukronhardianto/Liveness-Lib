@@ -32,7 +32,8 @@ class CameraManager(
         fun onFaceValidation(
             faceDetected: Boolean,
             faceInDistance: Boolean,
-            hasTexture: Boolean
+            hasTexture: Boolean,
+            noAccessories: Boolean
         )
     }
 
@@ -63,7 +64,7 @@ class CameraManager(
         cameraPreview = createCameraPreview()
         bindCameraPreview()
         detectionManager = DetectionManager(processCameraProvider, cameraSelector, faceDetectionListener)
-        detectionManager.initializeMlkit(lifecycleOwner)
+        detectionManager.initializeMlkit(lifecycleOwner, context)
     }
 
     private fun createCameraPreview(): Preview {

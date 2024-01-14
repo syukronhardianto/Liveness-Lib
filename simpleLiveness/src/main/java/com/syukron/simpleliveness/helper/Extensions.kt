@@ -8,6 +8,9 @@ import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.Mat
 import org.opencv.imgproc.Imgproc
+import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.support.image.ImageProcessor
+import org.tensorflow.lite.support.image.TensorImage
 import kotlin.math.sqrt
 
 fun newBoundingBox(face: Face): Rect {
@@ -48,3 +51,20 @@ fun performTextureAnalysis(faceBitmap: Bitmap): Boolean {
     val thresholdValue = 2500
     return Core.countNonZero(edges) > thresholdValue
 }
+
+fun performMaskAndGlassesDetection(
+    bitmap: Bitmap,
+    accessoriesNetImageProcessor: ImageProcessor,
+    accessoriesNetModelInterpreter: Interpreter
+): Boolean {
+    val tensorImage = TensorImage.fromBitmap(bitmap)
+    val faceNetByteBuffer = accessoriesNetImageProcessor.process(tensorImage).buffer
+    val outputArray = Array(1) { FloatArray(NUM_CLASSES) }
+    accessoriesNetModelInterpreter.run(faceNetByteBuffer, outputArray)
+
+    val confidencePlainFace = outputArray[0][PLAIN_CLASS_INDEX]
+    return confidencePlainFace > 0.55
+}
+
+private const val PLAIN_CLASS_INDEX = 3
+private const val NUM_CLASSES = 4

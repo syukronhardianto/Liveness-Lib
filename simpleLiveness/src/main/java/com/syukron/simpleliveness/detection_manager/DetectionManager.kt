@@ -2,6 +2,7 @@ package com.simple.livenesslib.detection_manager
 
 import android.annotation.SuppressLint
 import android.content.ContentValues
+import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
 import android.view.Surface.ROTATION_0
@@ -12,12 +13,14 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.lifecycle.LifecycleOwner
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.*
-import com.simple.livenesslib.helper.BitmapUtils
-import com.simple.livenesslib.helper.calculateDistance
-import com.simple.livenesslib.helper.newBoundingBox
-import com.simple.livenesslib.helper.performTextureAnalysis
+import com.simple.livenesslib.helper.*
 import com.syukron.simpleliveness.camera_manager.CameraManager
 import org.opencv.android.OpenCVLoader
+import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.support.common.FileUtil
+import org.tensorflow.lite.support.common.ops.NormalizeOp
+import org.tensorflow.lite.support.image.ImageProcessor
+import org.tensorflow.lite.support.image.ops.ResizeOp
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -32,15 +35,23 @@ class DetectionManager(
     private lateinit var lifecycleOwner: LifecycleOwner
     private lateinit var faceBitmap: Bitmap
     private lateinit var croppedFaceBitmap: Bitmap
+    private lateinit var accessoriesNetModelInterpreter: Interpreter
+    private lateinit var accessoriesNetImageProcessor: ImageProcessor
 
     private var scanCounter = 0
 
     private var faceInDistance = false
     private var hasTexture = false
+    private var noAccessories = false
 
-    fun initializeMlkit(lifecycleOwner: LifecycleOwner) {
+    fun initializeMlkit(lifecycleOwner: LifecycleOwner, context: Context) {
         this.lifecycleOwner = lifecycleOwner
         OpenCVLoader.initDebug()
+        accessoriesNetModelInterpreter = Interpreter(FileUtil.loadMappedFile(context, "saved_model.tflite"), Interpreter.Options())
+        accessoriesNetImageProcessor = ImageProcessor.Builder()
+            .add(ResizeOp(224, 224, ResizeOp.ResizeMethod.BILINEAR))
+            .add(NormalizeOp(0f, 255f))
+            .build()
         bindInputAnalyzer()
     }
 
@@ -96,12 +107,16 @@ class DetectionManager(
                         val leftEyeMark = face.getLandmark(FaceLandmark.LEFT_EYE)
                         val rightEyeMark = face.getLandmark(FaceLandmark.RIGHT_EYE)
                         faceInDistance = calculateDistance(leftEyeMark?.position, rightEyeMark?.position) > 85.0
-                        if (scanCounter % 8 == 0) hasTexture = performTextureAnalysis(croppedFaceBitmap)
+                        if (scanCounter % 8 == 0) {
+                            hasTexture = performTextureAnalysis(croppedFaceBitmap)
+                            noAccessories = performMaskAndGlassesDetection(croppedFaceBitmap, accessoriesNetImageProcessor, accessoriesNetModelInterpreter)
+                        }
 
                         faceDetectionListener.onFaceValidation(
                             true,
                             faceInDistance,
-                            hasTexture
+                            hasTexture,
+                            noAccessories
                         )
 
                         faceDetectionListener.onFaceDetection(
@@ -118,7 +133,8 @@ class DetectionManager(
                     faceDetectionListener.onFaceValidation(
                         false,
                         faceInDistance,
-                        hasTexture
+                        hasTexture,
+                        noAccessories
                     )
                 }
             }.addOnFailureListener { exception ->
